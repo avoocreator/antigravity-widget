@@ -276,7 +276,8 @@ function createWindow() {
   }
 
   win.once('ready-to-show', () => {
-    win.showInactive();
+    win.show();
+    win.focus();
     refreshBackdrop(true);
   });
 
@@ -305,7 +306,8 @@ function createWindow() {
 
 function showWidget() {
   if (!win) return;
-  win.showInactive();
+  win.show();
+  win.focus();
 }
 
 function toggleWidget() {
@@ -357,11 +359,15 @@ function refreshTrayMenu() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(ROOT, 'assets', 'tray.png'));
-  tray = new Tray(icon);
-  tray.setToolTip('Antigravity Widget');
-  tray.on('click', toggleWidget);
-  refreshTrayMenu();
+  try {
+    const icon = nativeImage.createFromPath(path.join(ROOT, 'assets', 'tray.png'));
+    tray = new Tray(icon);
+    tray.setToolTip('Antigravity Widget');
+    tray.on('click', toggleWidget);
+    refreshTrayMenu();
+  } catch (err) {
+    console.warn('[tray] Gagal inisialisasi tray icon:', err);
+  }
 }
 
 // ---------------------------------------------------------------- IPC
