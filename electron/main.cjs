@@ -2,7 +2,7 @@
 // Proses utama Electron. Sengaja CommonJS polos (tanpa langkah build) supaya
 // preload/main tidak bergantung pada plugin bundler. Hanya UI (src/) yang dibuild Vite.
 
-const { app, BrowserWindow, Menu, Tray, nativeImage, screen, shell, ipcMain, clipboard } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, screen, shell, ipcMain, clipboard, globalShortcut } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawn, execFile } = require('node:child_process');
@@ -246,9 +246,9 @@ function createWindow() {
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
-    skipTaskbar: true, // tidak muncul di taskbar
-    show: false, // muncul tanpa mencuri fokus, lihat ready-to-show
-    alwaysOnTop: !!settings.alwaysOnTop,
+    skipTaskbar: false, // tampilkan di taskbar agar mudah diakses
+    show: false, // muncul saat ready-to-show
+    alwaysOnTop: settings.alwaysOnTop !== undefined ? !!settings.alwaysOnTop : true, // default melayang agar langsung terlihat
     icon: path.join(ROOT, 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -411,6 +411,7 @@ app.on('window-all-closed', () => {
 });
 app.on('before-quit', () => {
   quitting = true;
+  globalShortcut.unregisterAll();
   clearTimeout(restartTimer);
   if (reader) reader.kill();
 });
@@ -420,6 +421,7 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   startReader();
+  globalShortcut.register('CommandOrControl+Alt+A', toggleWidget);
   setInterval(() => {
     if (win && win.isVisible()) refreshBackdrop(false);
   }, WALLPAPER_REFRESH_MS);
