@@ -1,42 +1,8 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import electron from 'vite-plugin-electron'
-import renderer from 'vite-plugin-electron-renderer'
-import path from 'path'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
-// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [
-    react(),
-    electron([
-      {
-        entry: 'electron/main.ts',
-        vite: {
-          build: {
-            outDir: 'dist-electron',
-            rollupOptions: {
-              external: ['node:sqlite', 'node:fs', 'node:path', 'node:os']
-            }
-          }
-        }
-      },
-      {
-        entry: 'electron/preload.ts',
-        onstart(options) {
-          options.reload()
-        },
-        vite: {
-          build: {
-            outDir: 'dist-electron'
-          }
-        }
-      }
-    ]),
-    renderer()
-  ],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src')
-    }
-  }
-})
+  base: './', // dimuat lewat file:// oleh Electron
+  plugins: [react()],
+  build: { outDir: 'dist', emptyOutDir: true, target: 'chrome130' },
+});

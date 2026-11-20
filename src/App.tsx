@@ -1,164 +1,105 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Header } from './components/Header';
-import { ActionRequiredSection } from './components/ActionRequiredSection';
-import { RunningSection } from './components/RunningSection';
-import { ScheduledSection } from './components/ScheduledSection';
-import { CompletedSection } from './components/CompletedSection';
+import { Hero } from './components/Hero';
+import { ActionList, RunningList, Recent, Schedule } from './components/Sections';
 import { HistoryModal } from './components/HistoryModal';
-import type { WidgetData } from './types';
+import { buildModel } from './model';
+import type { Geom, Payload, Session } from './types';
 
-// Fallback data untuk mode browser preview
-const initialData: WidgetData = {
-  agentStatus: 'idle',
-  runningTasks: [],
-  actionRequiredTasks: [],
-  scheduledTasks: [
-    {
-      id: 'sched-1',
-      title: 'Daily Codebase & Git Sync',
-      status: 'scheduled',
-      category: 'scheduled',
-      cronExpr: '0 17 * * 1-5',
-      scheduledTime: 'Hari ini, 17:00 WIB',
-      relativeSchedule: 'dalam 6 jam',
-      lastModified: Date.now()
-    }
-  ],
-  completedRecentTasks: [],
-  allHistoryTasks: [],
-  summary: {
-    runningCount: 0,
-    actionCount: 0,
-    scheduledCount: 1,
-    completedRecentCount: 0,
-    totalHistoryCount: 0
-  }
-};
+export function App() {
+  const [payload, setPayload] = useState<Payload | null>(null);
+  const [backdrop, setBackdrop] = useState<string | null>(null);
+  const [geom, setGeom] = useState<Geom | null>(null);
+  const [pinned, setPinned] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [history, setHistory] = useState(false);
+  const [toast, setToast] = useState('');
 
-export const App: React.FC = () => {
-  const [data, setData] = useState<WidgetData>(initialData);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+    api.getState().then((s) => {
+      setPayload(s.payload);
+      setBackdrop(s.backdrop);
+      setGeom(s.geom);
+      setPinned(s.pinned);
+    });
+    const off = [api.onData(setPayload), api.onBackdrop(setBackdrop), api.onGeom(setGeom), api.onPinned(setPinned)];
+    return () => off.forEach((f) => f());
+  }, []);
 
-  const loadData = useCallback(async () => {
-    if (window.electronAPI) {
-      try {
-        const res = await window.electronAPI.getWidgetData();
-        setData(res);
-      } catch (err) {
-        console.error('Failed to get widget data:', err);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      setLoading(false);
+  // Satu timer ringan untuk jam & waktu relatif; berhenti saat window tersembunyi.
+  useEffect(() => {
+    let t: number | undefined;
+    const start = () => {
+      setNow(Date.now());
+      t = window.setInterval(() => setNow(Date.now()), 20_000);
+    };
+    const onVis = () => {
+      window.clearInterval(t);
+      if (!document.hidden) start();
+    };
+    start();
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
+
+  const m = useMemo(() => buildModel(payload, now), [payload, now]);
+
+  const open = useCallback(async (s: Session) => {
+    const r = await window.electronAPI?.openSession(s.id, s.title);
+    if (r && !r.ok && r.copied) {
+      setToast('Judul sesi disalin. Buka Antigravity lalu cari di riwayat.');
+      window.setTimeout(() => setToast(''), 3200);
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-
-    if (window.electronAPI) {
-      const unsubscribe = window.electronAPI.onDataUpdate((updatedData) => {
-        setData(updatedData);
-      });
-      return () => unsubscribe();
-    }
-  }, [loadData]);
-
-  const handleResolveAction = async (id: string, action: 'approve' | 'reject') => {
-    if (window.electronAPI) {
-      await window.electronAPI.resolveAction(id, action);
-    } else {
-      // Local preview fallback
-      setData((prev) => ({
-        ...prev,
-        actionRequiredTasks: prev.actionRequiredTasks.filter((t) => t.id !== id),
-        summary: {
-          ...prev.summary,
-          actionCount: prev.summary.actionCount - 1
-        }
-      }));
-    }
-  };
-
-  const handleOpenConversation = (id: string) => {
-    if (window.electronAPI) {
-      window.electronAPI.openConversation(id);
-    } else {
-      console.log('Open conversation:', id);
-    }
-  };
-
-  const handleMinimize = () => {
-    if (window.electronAPI) {
-      window.electronAPI.minimizeWidget();
-    }
-  };
-
-  const handleClose = () => {
-    if (window.electronAPI) {
-      window.electronAPI.closeWidget();
-    }
-  };
+  const hero = m.running[0] ?? m.action[0];
+  const style = {
+    '--ox': `${geom?.ox ?? 0}px`,
+    '--oy': `${geom?.oy ?? 0}px`,
+    '--dw': `${geom?.dw ?? 1920}px`,
+    '--dh': `${geom?.dh ?? 1080}px`,
+    '--wall': backdrop ? `url(${backdrop})` : 'none',
+  } as CSSProperties;
 
   return (
-    <div className="relative w-full h-full flex flex-col p-3 box-border">
-      {/* Container Frosted Glass Utama sesuai Foto 2 */}
-      <main className="w-full flex-1 flex flex-col p-4 rounded-3xl glass-container overflow-hidden">
-        {/* Header Pill */}
-        <Header
-          agentStatus={data.agentStatus}
-          runningCount={data.summary.runningCount}
-          onRefresh={loadData}
-          onMinimize={handleMinimize}
-          onClose={handleClose}
-        />
+    <div className="frame" style={style}>
+      <main className={`panel ${backdrop ? 'has-wall' : ''}`}>
+        <div className="glass" aria-hidden />
+        <div className="content">
+          <Header now={now} active={m.running.length} needs={m.action.length} pinned={pinned}
+            onPin={() => window.electronAPI?.togglePin()} onHide={() => window.electronAPI?.hide()} />
 
-        {/* Body Scrollable Sections */}
-        <div className="flex-1 overflow-y-auto pr-1 space-y-4">
-          {loading ? (
-            <div className="py-12 text-center text-xs text-slate-400">
-              Memuat data Antigravity...
-            </div>
-          ) : (
-            <>
-              {/* Section 1: Perlu Tindakan */}
-              <ActionRequiredSection
-                tasks={data.actionRequiredTasks}
-                onResolve={handleResolveAction}
-                onOpen={handleOpenConversation}
-              />
-
-              {/* Section 2: Sedang Berjalan */}
-              <RunningSection
-                tasks={data.runningTasks}
-                onOpen={handleOpenConversation}
-              />
-
-              {/* Section 3: Jadwal Berikutnya */}
-              <ScheduledSection tasks={data.scheduledTasks} />
-
-              {/* Section 4: Selesai 24 Jam Terakhir */}
-              <CompletedSection
-                tasks={data.completedRecentTasks}
-                totalHistoryCount={data.summary.totalHistoryCount}
-                onOpenHistory={() => setIsHistoryOpen(true)}
-                onOpenTask={handleOpenConversation}
-              />
-            </>
-          )}
+          <div className="scroll">
+            {m.error ? (
+              <div className="card notice">
+                <b>{m.error.code === 'NO_SQLITE' ? 'Node.js terlalu lama' : m.error.code === 'NO_NODE' ? 'Node.js tidak ditemukan' : 'Gagal membaca data Antigravity'}</b>
+                <small>{m.error.code === 'NO_SQLITE' ? 'Widget butuh Node.js 22.5 atau lebih baru di PATH (jalankan "node -v" untuk cek).' : m.error.message}</small>
+              </div>
+            ) : !m.dbFound ? (
+              <div className="card notice">
+                <b>Database Antigravity belum ditemukan</b>
+                <small>Mencari di ~/.gemini/antigravity. Buka Antigravity dan mulai satu chat, lalu widget ini terisi sendiri.</small>
+              </div>
+            ) : (
+              <>
+                <Hero session={hero} next={m.automations[0]} now={now} onOpen={open} />
+                <ActionList sessions={hero && hero.state === 'needs_action' ? m.action.slice(1) : m.action} now={now} onOpen={open} />
+                <RunningList sessions={m.running.slice(1)} now={now} onOpen={open} />
+                <Recent sessions={m.recent} total={m.history.length} now={now} onOpen={open} onHistory={() => setHistory(true)} />
+                <Schedule items={m.automations} now={now} />
+              </>
+            )}
+          </div>
         </div>
+        {toast && <div className="toast" role="status">{toast}</div>}
       </main>
-
-      {/* Modal History Lengkap */}
-      <HistoryModal
-        isOpen={isHistoryOpen}
-        onClose={() => setIsHistoryOpen(false)}
-        tasks={data.allHistoryTasks}
-        onOpenTask={handleOpenConversation}
-      />
+      {history && <HistoryModal sessions={m.history} now={now} onOpen={open} onClose={() => setHistory(false)} />}
     </div>
   );
-};
-export default App;
+}

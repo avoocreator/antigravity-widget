@@ -1,45 +1,50 @@
-export type TaskCategory = 'running' | 'action_required' | 'scheduled' | 'completed';
+export type SessionState = 'running' | 'needs_action' | 'idle';
 
-export interface TaskItem {
+export interface Session {
   id: string;
   title: string;
-  status: 'running' | 'action_required' | 'scheduled' | 'completed' | 'idle';
-  category: TaskCategory;
-  stepInfo?: string;
-  progress?: number;
-  actionText?: string;
-  actionType?: 'approval' | 'input' | 'retry';
-  scheduledTime?: string;
-  cronExpr?: string;
-  relativeSchedule?: string;
-  completedAt?: string;
-  lastModified: number;
-  workspace?: string;
+  state: SessionState;
+  statusRaw: string;
+  source?: string;
+  updatedAt: number;
+  progress?: { done: number; total: number; current?: string };
 }
 
-export interface WidgetData {
-  agentStatus: 'active' | 'idle';
-  runningTasks: TaskItem[];
-  actionRequiredTasks: TaskItem[];
-  scheduledTasks: TaskItem[];
-  completedRecentTasks: TaskItem[];
-  allHistoryTasks: TaskItem[];
-  summary: {
-    runningCount: number;
-    actionCount: number;
-    scheduledCount: number;
-    completedRecentCount: number;
-    totalHistoryCount: number;
-  };
+export interface Automation {
+  id: string;
+  name: string;
+  cron: string;
+  nextRun: number;
+  repeat: string;
+}
+
+export type Payload =
+  | { type: 'data'; dbFound: boolean; sessions: Session[]; automations: Automation[]; generatedAt: number }
+  | { type: 'error'; code: 'NO_SQLITE' | 'NO_NODE' | 'SPAWN' | 'READ_FAILED'; message: string; generatedAt: number };
+
+export interface Geom {
+  dw: number;
+  dh: number;
+  ox: number;
+  oy: number;
+}
+
+export interface WidgetState {
+  payload: Payload | null;
+  backdrop: string | null;
+  geom: Geom | null;
+  pinned: boolean;
 }
 
 export interface ElectronAPI {
-  getWidgetData: () => Promise<WidgetData>;
-  onDataUpdate: (callback: (data: WidgetData) => void) => () => void;
-  openConversation: (id: string) => Promise<void>;
-  resolveAction: (id: string, action: 'approve' | 'reject') => Promise<void>;
-  minimizeWidget: () => Promise<void>;
-  closeWidget: () => Promise<void>;
+  getState: () => Promise<WidgetState>;
+  onData: (cb: (p: Payload) => void) => () => void;
+  onBackdrop: (cb: (url: string | null) => void) => () => void;
+  onGeom: (cb: (g: Geom) => void) => () => void;
+  onPinned: (cb: (on: boolean) => void) => () => void;
+  openSession: (id: string, title: string) => Promise<{ ok: boolean; copied?: boolean }>;
+  hide: () => Promise<void>;
+  togglePin: () => Promise<boolean>;
 }
 
 declare global {
